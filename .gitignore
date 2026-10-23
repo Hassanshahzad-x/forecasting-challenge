@@ -2,3 +2,8 @@
 .venv/
 .pytest_cache/
 __pycache__/
+artifacts/
+challenge_data/*
+!challenge_data/README.md
+.ipynb_checkpoints/
+.DS_Store
