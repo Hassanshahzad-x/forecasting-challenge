@@ -24,6 +24,7 @@ class Panel:
     quality: dict = field(default_factory=dict)
 
     def targets(self) -> pd.DataFrame:
+        """Count the VMs with a reading and average their CPU, for each timestamp."""
         observed = ~np.isnan(self.cpu)
         count = observed.sum(axis=0)
         total = np.where(observed, self.cpu, 0.0).sum(axis=0)
@@ -39,10 +40,12 @@ class Panel:
 
 
 def load_readings(data_dir: str | Path) -> pd.DataFrame:
+    """Read the CPU readings file from the data folder."""
     return pd.read_csv(Path(data_dir) / READINGS_FILE)
 
 
 def load_metadata(data_dir: str | Path) -> pd.DataFrame:
+    """Read the VM metadata file from the data folder."""
     return pd.read_csv(Path(data_dir) / METADATA_FILE)
 
 

@@ -14,8 +14,6 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import HistGradientBoostingRegressor
 
-from cwfc.baselines import persistence_forecast, seasonal_naive_forecast
-
 PERIOD_SECONDS = 3600  # the hourly cycle found in the EDA (lag-12 ACF of differences = 0.61)
 
 
@@ -27,17 +25,21 @@ class History:
     cpu: np.ndarray | None = None  # VM x time avg_cpu matrix, NaN = missing
 
     def upto(self, n: int) -> "History":
+        """Cut the history after the first n steps, so nothing later can be seen."""
         cpu = None if self.cpu is None else self.cpu[:, :n]
         return History(self.timestamps[:n], self.y[:n], self.step, cpu)
 
     @property
     def period(self) -> int:
+        """Number of steps in one hour (12 at five-minute steps)."""
         return max(1, PERIOD_SECONDS // self.step)
 
     def phase(self, timestamps: np.ndarray) -> np.ndarray:
+        """Position of each timestamp inside its hour (0 to 11 at five-minute steps)."""
         return (np.asarray(timestamps) // self.step) % self.period
 
     def future_timestamps(self, horizon: int) -> np.ndarray:
+        """The next `horizon` timestamps after the end of the history."""
         return self.timestamps[-1] + self.step * np.arange(1, horizon + 1)
 
 
@@ -57,23 +59,21 @@ def make_history(timestamps, y, step, cpu=None) -> History:
 
 # --- baselines ------------------------------------------------------------------------
 
-def _frame(hist: History) -> pd.DataFrame:
-    return pd.DataFrame({"y": hist.y})
-
-
 def persistence(hist: History, horizon: int) -> np.ndarray:
-    return persistence_forecast(_frame(hist), pd.DataFrame(index=range(horizon)), "y").to_numpy()
+    """Repeat the last known value for every future step."""
+    return np.full(horizon, hist.y[-1])
 
 
 def moving_average_1h(hist: History, horizon: int) -> np.ndarray:
+    """Use the average of the last hour for every future step."""
     return np.full(horizon, hist.y[-hist.period:].mean())
 
 
 def seasonal_naive_1h(hist: History, horizon: int) -> np.ndarray:
+    """Copy the last hour forward: the next hour looks like the one just seen."""
     if len(hist.y) < hist.period:
         return persistence(hist, horizon)
-    template = pd.DataFrame(index=range(horizon))
-    return seasonal_naive_forecast(_frame(hist), template, "y", hist.period).to_numpy()
+    return np.resize(hist.y[-hist.period:], horizon)  # repeat the last hour
 
 
 # --- seasonal statistical models -------------------------------------------------------

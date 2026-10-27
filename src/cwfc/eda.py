@@ -24,11 +24,13 @@ SEGMENTS = ["vm_category", "virtual_core_bucket", "memory_gb_bucket"]
 
 
 def acf(x: np.ndarray, lag: int) -> float:
+    """How similar the series is to itself shifted by `lag` steps (1 = same, 0 = unrelated)."""
     x = x - x.mean()
     return float(np.sum(x[lag:] * x[:-lag]) / np.sum(x * x))
 
 
 def main(argv: list[str] | None = None) -> None:
+    """Command line entry: describe the data and write eda_summary.md plus the overview figures."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--data", default="challenge_data", type=Path)
     parser.add_argument("--output", default="reports", type=Path)

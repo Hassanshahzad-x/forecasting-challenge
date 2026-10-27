@@ -20,10 +20,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from cwfc.backtest import PEAK_QUANTILE, rolling_origins, run_backtest
+from cwfc.backtest import PEAK_QUANTILE, rolling_origins, run_backtest, summarise
 from cwfc.data import HOLDOUT_STEPS, METADATA_FILE, build_panel, load_metadata, load_readings, split_index
-from cwfc.forecasters import BASELINE, candidates, make_history, persistence, seasonal_ar1
-from cwfc.metrics import mae, rmse, smape
+from cwfc.forecasters import candidates, make_history, persistence, seasonal_ar1
+from cwfc.metrics import mae
 from cwfc.predict import TARGET_BOUNDS
 
 COLUMNS = ["timestamp", *TARGET_BOUNDS]
@@ -40,20 +40,6 @@ def validate_predictions(pred: pd.DataFrame, holdout_timestamps) -> None:
     assert np.isfinite(values).all(), "non-finite predictions"
     assert (pred["active_vm_count"] >= 0).all(), "negative VM count"
     assert pred["aggregate_cpu_utilization"].between(0, 100).all(), "CPU outside [0,100]"
-
-
-def scores(actual, forecast, peak) -> dict:
-    actual, forecast = np.asarray(actual, float), np.asarray(forecast, float)
-    out = {
-        "mae": mae(actual, forecast),
-        "rmse": rmse(actual, forecast),
-        "smape_pct": smape(actual, forecast),
-        "bias": float(np.mean(forecast - actual)),
-        "max_abs_error": float(np.max(np.abs(forecast - actual))),
-        "n_peak": int(peak.sum()),
-    }
-    out["peak_mae"] = mae(actual[peak], forecast[peak]) if peak.any() else np.nan
-    return out
 
 
 def policy_table(residuals: np.ndarray, forecast, actual) -> pd.DataFrame:
@@ -74,6 +60,7 @@ def policy_table(residuals: np.ndarray, forecast, actual) -> pd.DataFrame:
 
 
 def main(argv: list[str] | None = None) -> None:
+    """Command line entry: check predictions.csv, score it on the holdout and write report tables and figures."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--data", default="challenge_data", type=Path)
     parser.add_argument("--predictions", default="predictions.csv", type=Path)
@@ -91,16 +78,19 @@ def main(argv: list[str] | None = None) -> None:
     validate_predictions(pred, hold["timestamp"])
     selection = json.loads((args.artifacts / "selection.json").read_text())
 
-    rows, policy = [], []
+    tables, policy = [], []
     for target in TARGET_BOUNDS:
         hist = make_history(train["timestamp"].to_numpy(), train[target].to_numpy(), panel.step, panel.cpu[:, :split])
         actual = hold[target].to_numpy()
         peak = actual > np.quantile(train[target], PEAK_QUANTILE)
         chosen = selection[target]["model"]
-        rows.append({"target": target, "model": f"submitted ({chosen})", **scores(actual, pred[target], peak)})
-        for name, model in candidates(target, has_vm_matrix=True).items():
-            if name != chosen:
-                rows.append({"target": target, "model": name, **scores(actual, model(hist, HOLDOUT_STEPS), peak)})
+        forecasts = {f"submitted ({chosen})": pred[target].to_numpy()}
+        forecasts.update({name: model(hist, HOLDOUT_STEPS) for name, model in candidates(target, has_vm_matrix=True).items()})
+        scored = pd.concat([
+            pd.DataFrame({"model": name, "h": np.arange(1, HOLDOUT_STEPS + 1), "actual": actual, "forecast": f, "peak": peak})
+            for name, f in forecasts.items()
+        ])
+        tables.append(summarise(scored).assign(target=target))
 
         bt_path = args.artifacts / f"backtest_{target}.csv"
         if target == "aggregate_cpu_utilization" and bt_path.exists():
@@ -112,9 +102,8 @@ def main(argv: list[str] | None = None) -> None:
             _plot_cv(bt, fig_dir / "cv_mae_by_horizon.png")
             _plot_holdout(train, hold, pred, args.artifacts / "forecast_intervals.csv", fig_dir / "holdout_forecast.png")
 
-    table = pd.DataFrame(rows)
-    base = table[table["model"] == BASELINE].set_index("target")["mae"]
-    table["mae_vs_persistence"] = table["mae"] / table["target"].map(base).replace(0, np.nan)
+    table = pd.concat(tables, ignore_index=True)
+    table = table[["target", *table.columns.drop("target")]]
     table.to_csv(args.output / "holdout_metrics.csv", index=False)
     print(table.round(4).to_string(index=False))
 
@@ -169,6 +158,7 @@ def segment_study(panel, meta: pd.DataFrame, split: int, column: str = "vm_categ
 
 
 def _plot_cv(bt: pd.DataFrame, path: Path) -> None:
+    """Chart how each model's error grows as it forecasts further ahead."""
     err = bt.assign(abs_err=(bt["forecast"] - bt["actual"]).abs())
     curve = err.groupby(["model", "h"])["abs_err"].mean().unstack(0)
     ax = curve.plot(figsize=(8, 4.5), marker=".")
@@ -179,6 +169,7 @@ def _plot_cv(bt: pd.DataFrame, path: Path) -> None:
 
 
 def _plot_holdout(train, hold, pred, intervals_path: Path, path: Path) -> None:
+    """Chart the real CPU line against the forecast and its 90% band for the final 2 hours."""
     hours = lambda ts: np.asarray(ts) / 3600
     fig, ax = plt.subplots(figsize=(9, 4.5))
     ax.plot(hours(train["timestamp"]), train["aggregate_cpu_utilization"], color="0.4", label="training actual")

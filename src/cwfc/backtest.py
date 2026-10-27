@@ -22,6 +22,7 @@ def rolling_origins(n_train: int, horizon: int, min_train: int = 48, stride: int
 
 
 def run_backtest(hist: History, models: dict, horizon: int, origins: list[int]) -> pd.DataFrame:
+    """Pretend to stand at each past origin, forecast ahead with every model, and keep the real values next to the forecasts."""
     rows = []
     for origin in origins:
         past = hist.upto(origin)
@@ -42,6 +43,7 @@ def run_backtest(hist: History, models: dict, horizon: int, origins: list[int]) 
 
 
 def summarise(bt: pd.DataFrame, baseline: str = BASELINE) -> pd.DataFrame:
+    """Turn forecast-vs-actual rows into one row of error scores per model, compared with the baseline."""
     out = []
     for name, g in bt.groupby("model", sort=False):
         err = g["forecast"] - g["actual"]
@@ -57,12 +59,12 @@ def summarise(bt: pd.DataFrame, baseline: str = BASELINE) -> pd.DataFrame:
             "n_peak": len(peak),
             "mae_h1_6": float(err[g["h"] <= 6].abs().mean()),
             "mae_h19_24": float(err[g["h"] >= 19].abs().mean()),
+            "max_abs_error": float(err.abs().max()),
         })
     table = pd.DataFrame(out)
     base = table.set_index("model").loc[baseline]
     for col in ["mae", "rmse", "peak_mae"]:
-        with np.errstate(divide="ignore", invalid="ignore"):
-            table[f"{col}_vs_baseline"] = np.where(base[col] == 0, np.where(table[col] == 0, 1.0, np.inf), table[col] / base[col])
+        table[f"{col}_vs_baseline"] = table[col] / base[col]  # 0/0 -> NaN: no baseline error to compare
     return table
 
 

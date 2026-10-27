@@ -94,7 +94,7 @@ selection.
 | `src/cwfc/predict.py` | CLI that writes `predictions.csv` |
 | `src/cwfc/evaluate.py` | CLI for holdout scoring, contract checks and the capacity-policy trade-off |
 | `src/cwfc/eda.py` | CLI that writes the workload analysis figures and tables |
-| `src/cwfc/{metrics,baselines,validation}.py` | starter utilities. Metrics and baselines are reused |
+| `src/cwfc/{metrics,baselines,validation}.py` | starter utilities. Metrics are reused |
 
 ## Main modelling decisions
 

@@ -25,6 +25,7 @@ TARGET_BOUNDS = {
 
 
 def forecast(panel: Panel, horizon: int = HOLDOUT_STEPS, artifacts: Path | None = None) -> pd.DataFrame:
+    """For each target, test all models on the training window, pick the best one and forecast the final 24 steps."""
     split = split_index(len(panel.timestamps), horizon)
     train_cpu = panel.cpu[:, :split]
     train = Panel(panel.timestamps[:split], panel.vm_ids, train_cpu, panel.step).targets()
@@ -65,6 +66,7 @@ def forecast(panel: Panel, horizon: int = HOLDOUT_STEPS, artifacts: Path | None 
 
 
 def main(argv: list[str] | None = None) -> None:
+    """Command line entry: load the data, forecast and write predictions.csv."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--data", default="challenge_data", type=Path)
     parser.add_argument("--output", default="predictions.csv", type=Path)

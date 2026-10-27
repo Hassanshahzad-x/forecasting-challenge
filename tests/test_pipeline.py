@@ -9,6 +9,7 @@ from cwfc.predict import main as predict_main
 
 
 def test_targets_handle_duplicates_invalid_rows_and_gaps():
+    """Messy input: a VM is counted once, bad readings are dropped and empty slots stay empty."""
     raw = pd.DataFrame({
         "timestamp": [0, 0, 0, 300, 300, 900, 900],
         "vm_id": ["a", "a", "b", "a", "b", "a", "b"],
@@ -25,6 +26,7 @@ def test_targets_handle_duplicates_invalid_rows_and_gaps():
 
 
 def test_backtest_forecasts_ignore_data_after_origin():
+    """No peeking: changing future data must not change a past forecast."""
     rng = np.random.default_rng(1)
     ts = np.arange(110) * 300
     y = 10 + rng.normal(size=110)
@@ -42,6 +44,7 @@ def test_backtest_forecasts_ignore_data_after_origin():
 
 
 def test_seasonal_ar1_recovers_hourly_pattern():
+    """A clean repeating hourly wave must be forecast exactly."""
     ts = np.arange(110) * 300
     pattern = np.sin(2 * np.pi * np.arange(12) / 12)
     y = 9 + pattern[np.arange(110) % 12]
@@ -51,6 +54,7 @@ def test_seasonal_ar1_recovers_hourly_pattern():
 
 
 def test_end_to_end_on_small_irregular_dataset(tmp_path):
+    """The full predict command works on a tiny dataset with missing readings and gives a valid file."""
     rng = np.random.default_rng(0)
     rows = []
     for vm in range(40):
